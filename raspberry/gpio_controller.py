@@ -10,6 +10,9 @@ class GPIOController:
     Minimal GPIO driver using libgpiod.
     Prefers gpiod v2 API (request_lines); falls back to v1 (Chip/get_line).
     If gpiod is missing/unavailable, actions are only logged.
+
+    Logic: GPIO17 is HIGH by default (door locked),
+    and goes LOW when face is recognized (door unlocked).
     """
 
     def __init__(self, pin: int, pulse_ms: int, chip: str = "gpiochip0", consumer: str = "face-access"):
@@ -48,11 +51,16 @@ class GPIOController:
                 )
                 self.line_request = request
                 self.mode = "v2"
+                # Set initial state to HIGH (door locked)
+                try:
+                    self.line_request.set_value(self.pin, gpiod.line.Value.ACTIVE)
+                except Exception as exc:
+                    logger.warning("Failed to set initial HIGH state (v2): %s", exc)
                 try:
                     chip_name = chip.name
                 except Exception:
                     chip_name = self.chip_name
-                logger.info("GPIO initialized via gpiod v2 on %s pin %s", chip_name, self.pin)
+                logger.info("GPIO initialized via gpiod v2 on %s pin %s (initial state: HIGH)", chip_name, self.pin)
                 return
             except Exception as exc:
                 logger.warning("Failed to init gpiod v2 API: %s", exc)
@@ -64,38 +72,58 @@ class GPIOController:
             chip = gpiod.Chip(self.chip_name, gpiod.Chip.OPEN_BY_NAME)
             line = chip.get_line(self.pin)
             line.request(consumer=self.consumer, type=gpiod.LINE_REQ_DIR_OUT)
+            # Set initial state to HIGH (door locked)
+            try:
+                line.set_value(1)
+            except Exception as exc:
+                logger.warning("Failed to set initial HIGH state (v1): %s", exc)
             self.line = line
             self.mode = "v1"
-            logger.info("GPIO initialized via gpiod v1 on %s pin %s", self.chip_name, self.pin)
+            logger.info("GPIO initialized via gpiod v1 on %s pin %s (initial state: HIGH)", self.chip_name, self.pin)
         except Exception as exc:
             logger.error("Failed to init gpiod v1 API: %s. GPIO actions will be logged only.", exc)
             self.mode = "none"
 
     def trigger(self) -> None:
+        """
+        Trigger door unlock: set GPIO to LOW (door unlocked),
+        wait for pulse_ms, then set back to HIGH (door locked).
+        """
         if self.mode == "v2" and self.line_request:
             try:
                 import gpiod  # type: ignore
 
-                self.line_request.set_value(self.pin, gpiod.line.Value.ACTIVE)
-                time.sleep(self.pulse_ms / 1000)
+                # Set to LOW (door unlocked)
                 self.line_request.set_value(self.pin, gpiod.line.Value.INACTIVE)
+                time.sleep(self.pulse_ms / 1000)
+                # Set back to HIGH (door locked)
+                self.line_request.set_value(self.pin, gpiod.line.Value.ACTIVE)
             except Exception as exc:
                 logger.error("GPIO trigger failed (v2): %s", exc)
         elif self.mode == "v1" and self.line:
             try:
-                self.line.set_value(1)
-                time.sleep(self.pulse_ms / 1000)
+                # Set to LOW (door unlocked)
                 self.line.set_value(0)
+                time.sleep(self.pulse_ms / 1000)
+                # Set back to HIGH (door locked)
+                self.line.set_value(1)
             except Exception as exc:
                 logger.error("GPIO trigger failed (v1): %s", exc)
         else:
-            logger.info("GPIO trigger simulated on %s pin %s for %sms", self.chip_name, self.pin, self.pulse_ms)
+            logger.info("GPIO trigger simulated: LOW for %sms on pin %s, then back to HIGH", self.pulse_ms, self.pin)
 
     def cleanup(self) -> None:
+        """
+        Cleanup GPIO resources. Ensures pin is set to HIGH (door locked) before releasing.
+        """
         try:
-            if self.mode == "v1" and self.line:
-                self.line.release()
             if self.mode == "v2" and self.line_request:
+                try:
+                    import gpiod  # type: ignore
+                    # Ensure door is locked before cleanup
+                    self.line_request.set_value(self.pin, gpiod.line.Value.ACTIVE)
+                except Exception:
+                    pass
                 try:
                     self.line_request.release()
                 except Exception:
@@ -104,5 +132,12 @@ class GPIOController:
                         self.line_request.close()
                     except Exception:
                         pass
+            if self.mode == "v1" and self.line:
+                try:
+                    # Ensure door is locked before cleanup
+                    self.line.set_value(1)
+                except Exception:
+                    pass
+                self.line.release()
         except Exception as exc:
             logger.warning("GPIO cleanup failed: %s", exc)

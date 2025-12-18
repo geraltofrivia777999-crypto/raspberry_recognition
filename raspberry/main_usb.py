@@ -1,9 +1,9 @@
 import logging
 import time
 
-from config import PiSettings
-from pipeline import AccessController
-from usb_camera_client import USBCameraClient
+from raspberry.config import PiSettings
+from raspberry.pipeline import AccessController
+from raspberry.usb_camera_client import USBCameraClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)

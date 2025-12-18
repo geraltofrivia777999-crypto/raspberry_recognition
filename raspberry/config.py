@@ -8,6 +8,8 @@ class PiSettings(BaseSettings):
     rtsp_url: str = "rtsp://user:pass@camera/stream"
     usb_device_index: int = 0
     facenet_model_path: str = "facenet.onnx"
+    insightface_model_name: str = "buffalo_l"
+    insightface_det_size: tuple = (640, 640)
     threshold: float = 0.6
     gpio_pin: int = 17
     gpio_pulse_ms: int = 800
@@ -15,7 +17,7 @@ class PiSettings(BaseSettings):
     sync_interval_sec: int = 300
     cache_path: str = "raspberry_cache.json"
     token: str | None = None
-    model_name: str = "facenet"
+    model_name: str = "insightface"
 
     class Config:
         env_file = ".env"
