@@ -25,3 +25,10 @@ class PiSettings(BaseSettings):
     cache_path: str = "raspberry_cache.json"
     token: str | None = None
     model_name: str = "insightface"
+    access_cooldown_sec: float = 5.0  # Cooldown между срабатываниями (секунды)
+    local_users_dir: str = "local_users"  # Папка с локальными фото админов
+
+    # Exit Button Configuration
+    exit_button_enabled: bool = True  # Включить кнопку выхода
+    exit_button_pin: int = 27  # GPIO пин для кнопки выхода
+    exit_button_debounce_ms: int = 200  # Задержка anti-bounce (мс)
