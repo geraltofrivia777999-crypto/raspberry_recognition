@@ -25,3 +25,5 @@ class PiSettings(BaseSettings):
     cache_path: str = "raspberry_cache.json"
     token: str | None = None
     model_name: str = "insightface"
+    access_cooldown_sec: float = 5.0  # Cooldown между срабатываниями (секунды)
+    local_users_dir: str = "local_users"  # Папка с локальными фото админов
