@@ -4,11 +4,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-import cache, sync_client
-from config import PiSettings
-from gpio_controller import GPIOController
-from model_registry import RecognizerRegistry, HashedRecognizer, cosine_similarity
-from rtsp_client import RTSPClient
+from raspberry import cache, sync_client
+from raspberry.config import PiSettings
+from raspberry.gpio_controller import GPIOController
+from raspberry.model_registry import RecognizerRegistry, HashedRecognizer, cosine_similarity
+from raspberry.rtsp_client import RTSPClient
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +17,30 @@ class AccessController:
     def __init__(self, settings: PiSettings):
         self.settings = settings
         self.recognizer_registry = RecognizerRegistry()
+
+        # Register InsightFace recognizer
         try:
-            from facenet_recognizer import FaceNetRecognizer
+            from raspberry.insightface_recognizer import InsightFaceRecognizer
+
+            self.recognizer_registry.register(
+                "insightface",
+                InsightFaceRecognizer(
+                    model_name=settings.insightface_model_name,
+                    det_size=settings.insightface_det_size
+                )
+            )
+        except Exception as exc:
+            logger.warning("InsightFace not available on Pi: %s", exc)
+
+        # Register FaceNet recognizer as fallback
+        try:
+            from raspberry.facenet_recognizer import FaceNetRecognizer
 
             self.recognizer_registry.register("facenet", FaceNetRecognizer(settings.facenet_model_path))
         except Exception as exc:
-            logger.warning("FaceNet not available on Pi, using hashed recognizer: %s", exc)
+            logger.warning("FaceNet not available on Pi: %s", exc)
 
+        # Register hashed recognizer as last resort
         self.recognizer_registry.register("hashed", HashedRecognizer())
 
         try:
