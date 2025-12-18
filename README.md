@@ -77,7 +77,8 @@ GPIO_PULSE_MS=800
 ### Запуск с USB камерой (для тестов)
 
 ```bash
-python -m raspberry.main_usb
+cd raspberry
+python main_usb.py
 ```
 
 ### Запуск с RTSP камерой (для production)
@@ -91,7 +92,8 @@ RTSP_URL=rtsp://username:password@camera-ip:554/stream
 Затем запустите:
 
 ```bash
-python -m raspberry.main
+cd raspberry
+python main.py
 ```
 
 ## Модели распознавания
@@ -137,13 +139,15 @@ raspberry/
 ### Тест камеры и загрузки на сервер
 
 ```bash
-python -m raspberry.capture_uploader_test --name test-user --camera-index 0
+cd raspberry
+python capture_uploader_test.py --name test-user --camera-index 0
 ```
 
 ### Тест синхронизации с сервером
 
 ```bash
-python -m raspberry.debug_sync --server http://your-server:8000 --limit 3
+cd raspberry
+python debug_sync.py --server http://your-server:8000 --limit 3
 ```
 
 ## Автозапуск (systemd)
@@ -158,8 +162,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/raspberry_recognition
-ExecStart=/usr/bin/python3 -m raspberry.main_usb
+WorkingDirectory=/home/pi/raspberry_recognition/raspberry
+ExecStart=/usr/bin/python3 main_usb.py
 Restart=always
 RestartSec=10
 

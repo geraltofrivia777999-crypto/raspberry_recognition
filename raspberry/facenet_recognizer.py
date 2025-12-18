@@ -7,7 +7,7 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
-from raspberry.model_registry import BaseRecognizer
+from model_registry import BaseRecognizer
 
 logger = logging.getLogger(__name__)
 
