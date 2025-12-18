@@ -32,57 +32,58 @@ class GPIOController:
             logger.warning("gpiod not available: %s. GPIO actions will be logged only.", exc)
             return
 
-        # Prefer v2 API (gpiod>=2) if present (LineSettings + request_lines signature like in your working code).
+        # Try gpiod v2 API (gpiod>=2.0)
         if hasattr(gpiod, "LineSettings") and hasattr(gpiod, "line"):
             try:
+                # Try different chip paths
                 chip = None
-                for name in (self.chip_name, f"/dev/{self.chip_name}", "0"):
+                chip_path = None
+                for path in (f"/dev/{self.chip_name}", self.chip_name, "/dev/gpiochip0", "gpiochip0"):
                     try:
-                        chip = gpiod.Chip(name)
+                        chip = gpiod.Chip(path)
+                        chip_path = path
+                        logger.debug("Opened GPIO chip at %s", path)
                         break
-                    except Exception:
+                    except (FileNotFoundError, PermissionError, OSError) as e:
+                        logger.debug("Failed to open %s: %s", path, e)
                         continue
+
                 if chip is None:
-                    raise FileNotFoundError(f"Cannot open gpio chip {self.chip_name}")
-                line_settings = {self.pin: gpiod.LineSettings(direction=gpiod.line.Direction.OUTPUT)}
+                    raise PermissionError(
+                        f"Cannot open GPIO chip {self.chip_name}. "
+                        f"Try: sudo usermod -a -G gpio $USER && sudo chmod 666 /dev/gpiochip0"
+                    )
+
+                # Configure the line as output
+                line_config = {self.pin: gpiod.LineSettings(direction=gpiod.line.Direction.OUTPUT)}
                 request = chip.request_lines(
                     consumer=self.consumer,
-                    config=line_settings,
+                    config=line_config,
                 )
                 self.line_request = request
                 self.mode = "v2"
+
                 # Set initial state to HIGH (door locked)
                 try:
                     self.line_request.set_value(self.pin, gpiod.line.Value.ACTIVE)
                 except Exception as exc:
                     logger.warning("Failed to set initial HIGH state (v2): %s", exc)
-                try:
-                    chip_name = chip.name
-                except Exception:
-                    chip_name = self.chip_name
-                logger.info("GPIO initialized via gpiod v2 on %s pin %s (initial state: HIGH)", chip_name, self.pin)
+
+                logger.info("GPIO initialized via gpiod v2 on %s pin %s (initial state: HIGH)", chip_path, self.pin)
+                return
+            except PermissionError as exc:
+                logger.error("GPIO permission denied: %s", exc)
+                self.mode = "none"
                 return
             except Exception as exc:
                 logger.warning("Failed to init gpiod v2 API: %s", exc)
+                # Don't try v1 fallback if v2 exists but failed - v1 won't work either
+                self.mode = "none"
+                return
 
-        # Fallback to v1 API.
-        try:
-            import gpiod  # type: ignore
-
-            chip = gpiod.Chip(self.chip_name, gpiod.Chip.OPEN_BY_NAME)
-            line = chip.get_line(self.pin)
-            line.request(consumer=self.consumer, type=gpiod.LINE_REQ_DIR_OUT)
-            # Set initial state to HIGH (door locked)
-            try:
-                line.set_value(1)
-            except Exception as exc:
-                logger.warning("Failed to set initial HIGH state (v1): %s", exc)
-            self.line = line
-            self.mode = "v1"
-            logger.info("GPIO initialized via gpiod v1 on %s pin %s (initial state: HIGH)", self.chip_name, self.pin)
-        except Exception as exc:
-            logger.error("Failed to init gpiod v1 API: %s. GPIO actions will be logged only.", exc)
-            self.mode = "none"
+        # No gpiod v2 available
+        logger.error("gpiod v2 API not found. Please install: pip install gpiod")
+        self.mode = "none"
 
     def trigger(self) -> None:
         """
