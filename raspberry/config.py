@@ -16,7 +16,7 @@ class PiSettings(BaseSettings):
     usb_device_index: int = 0
     facenet_model_path: str = "facenet.onnx"
     insightface_model_name: str = "buffalo_l"
-    insightface_det_size: tuple = (640, 640)
+    insightface_det_size: tuple = (320, 320)  # Меньший размер для экономии памяти на RPi
     threshold: float = 0.6
     gpio_pin: int = 17
     gpio_pulse_ms: int = 800
