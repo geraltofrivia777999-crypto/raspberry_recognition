@@ -1,9 +1,9 @@
 import logging
 import time
 
-from raspberry.config import PiSettings
-from raspberry.pipeline import AccessController
-from raspberry.rtsp_client import RTSPClient
+from config import PiSettings
+from pipeline import AccessController
+from rtsp_client import RTSPClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)

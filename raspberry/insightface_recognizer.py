@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 
-from raspberry.model_registry import BaseRecognizer
+from model_registry import BaseRecognizer
 
 logger = logging.getLogger(__name__)
 

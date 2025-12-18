@@ -4,11 +4,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from raspberry import cache, sync_client
-from raspberry.config import PiSettings
-from raspberry.gpio_controller import GPIOController
-from raspberry.model_registry import RecognizerRegistry, HashedRecognizer, cosine_similarity
-from raspberry.rtsp_client import RTSPClient
+import cache
+import sync_client
+from config import PiSettings
+from gpio_controller import GPIOController
+from model_registry import RecognizerRegistry, HashedRecognizer, cosine_similarity
+from rtsp_client import RTSPClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class AccessController:
 
         # Register InsightFace recognizer
         try:
-            from raspberry.insightface_recognizer import InsightFaceRecognizer
+            from insightface_recognizer import InsightFaceRecognizer
 
             self.recognizer_registry.register(
                 "insightface",
@@ -34,7 +35,7 @@ class AccessController:
 
         # Register FaceNet recognizer as fallback
         try:
-            from raspberry.facenet_recognizer import FaceNetRecognizer
+            from facenet_recognizer import FaceNetRecognizer
 
             self.recognizer_registry.register("facenet", FaceNetRecognizer(settings.facenet_model_path))
         except Exception as exc:

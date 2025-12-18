@@ -6,8 +6,8 @@ Usage: python raspberry/debug_sync.py --server http://host:8000 --limit 2
 import argparse
 import sys
 
-from raspberry.config import PiSettings
-from raspberry.sync_client import fetch_photo, fetch_sync_payload
+from config import PiSettings
+from sync_client import fetch_photo, fetch_sync_payload
 
 
 def main() -> int:

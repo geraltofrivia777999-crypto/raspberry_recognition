@@ -4,8 +4,8 @@ from datetime import datetime
 
 import requests
 
-from raspberry.config import PiSettings
-from raspberry.usb_camera_client import USBCameraClient
+from config import PiSettings
+from usb_camera_client import USBCameraClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
