@@ -1,8 +1,15 @@
 
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 
 class PiSettings(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        protected_namespaces=()  # Отключаем защиту namespace для model_
+    )
+
     api_base_url: str = "http://185.22.152.208:80"
     device_id: str = "pi-001"
     rtsp_url: str = "rtsp://user:pass@camera/stream"
@@ -18,7 +25,3 @@ class PiSettings(BaseSettings):
     cache_path: str = "raspberry_cache.json"
     token: str | None = None
     model_name: str = "insightface"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
