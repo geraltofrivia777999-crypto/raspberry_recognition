@@ -1,0 +1,167 @@
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+
+import cache, sync_client
+from config import PiSettings
+from gpio_controller import GPIOController
+from model_registry import RecognizerRegistry, HashedRecognizer, cosine_similarity
+from rtsp_client import RTSPClient
+
+logger = logging.getLogger(__name__)
+
+
+class AccessController:
+    def __init__(self, settings: PiSettings):
+        self.settings = settings
+        self.recognizer_registry = RecognizerRegistry()
+        try:
+            from facenet_recognizer import FaceNetRecognizer
+
+            self.recognizer_registry.register("facenet", FaceNetRecognizer(settings.facenet_model_path))
+        except Exception as exc:
+            logger.warning("FaceNet not available on Pi, using hashed recognizer: %s", exc)
+
+        self.recognizer_registry.register("hashed", HashedRecognizer())
+
+        try:
+            self.recognizer = self.recognizer_registry.get(settings.model_name)
+        except KeyError:
+            logger.warning("Recognizer %s not found, using default", settings.model_name)
+            self.recognizer = self.recognizer_registry.get_default()
+        self.gpio = GPIOController(settings.gpio_pin, settings.gpio_pulse_ms, settings.gpio_chip)
+        self.cache = cache.load_cache(settings.cache_path)
+
+    def refresh_from_cloud(self) -> None:
+        payload = sync_client.fetch_sync_payload(self.settings)
+        embeddings = self._build_embeddings_from_photos(payload.get("photos", []))
+        payload["embeddings"] = embeddings
+        self.cache = payload
+        cache.save_cache(self.settings.cache_path, payload)
+        config = payload.get("config", {})
+        self.settings.threshold = float(config.get("threshold", self.settings.threshold))
+        self.settings.gpio_pin = int(config.get("gpio_pin", self.settings.gpio_pin))
+        self.settings.gpio_pulse_ms = int(config.get("gpio_pulse_ms", self.settings.gpio_pulse_ms))
+        self.settings.sync_interval_sec = int(config.get("sync_interval_sec", self.settings.sync_interval_sec))
+        logger.info(
+            "Cache refreshed: %s photos -> %s embeddings, %s users",
+            len(payload.get("photos", [])),
+            len(payload.get("embeddings", [])),
+            len(payload.get("users", [])),
+        )
+
+    def _build_embeddings_from_photos(self, photos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        embeddings: List[Dict[str, Any]] = []
+        for photo in photos:
+            try:
+                img_bytes = sync_client.fetch_photo(self.settings, photo["url"])
+                vector = self.recognizer.embed(img_bytes)
+                embeddings.append(
+                    {
+                        "user_id": photo.get("user_id"),
+                        "person_name": photo.get("person_name"),
+                        "vector": vector.tolist(),
+                        "model_name": getattr(self.recognizer, "name", "unknown"),
+                        "filename": photo.get("filename"),
+                    }
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to build embedding for photo %s (user_id=%s, url=%s): %s",
+                    photo.get("filename"),
+                    photo.get("user_id"),
+                    photo.get("url"),
+                    exc,
+                )
+        return embeddings
+
+    def _best_match(self, embedding: np.ndarray) -> Tuple[Optional[Dict[str, Any]], float]:
+        best_score = 0.0
+        best: Optional[Dict[str, Any]] = None
+        expected_dim = int(embedding.shape[0]) if hasattr(embedding, "shape") else len(embedding)
+        current_model = getattr(self.recognizer, "name", None)
+        for emb in self.cache.get("embeddings", []):
+            if current_model and emb.get("model_name") and emb["model_name"] != current_model:
+                # Skip embeddings produced by a different model (e.g., hashed 128-dim vs FaceNet 512-dim).
+                continue
+            ref = np.array(emb["vector"], dtype=np.float32)
+            if ref.shape[0] != expected_dim:
+                logger.debug(
+                    "Skipping embedding id=%s due to dim mismatch: %s vs %s",
+                    emb.get("id"),
+                    ref.shape[0],
+                    expected_dim,
+                )
+                continue
+            score = cosine_similarity(embedding, ref)
+            if score > best_score:
+                best_score = score
+                best = emb
+        return best, best_score
+
+    def _is_within_schedule(self, user_id: int, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.utcnow()
+        day = now.weekday()
+        current_time = now.time()
+        windows = [w for w in self.cache.get("access_windows", []) if w["user_id"] == user_id]
+        if not windows:
+            return True
+        for window in windows:
+            if window["day_of_week"] != day:
+                continue
+            try:
+                from datetime import time as _time
+
+                start = _time.fromisoformat(str(window["start_time"]))
+                end = _time.fromisoformat(str(window["end_time"]))
+            except Exception:
+                continue
+            if start <= current_time <= end:
+                return True
+        return False
+
+    def process_frame(self, frame_bytes: bytes) -> Dict[str, Any]:
+        embedding = self.recognizer.embed(frame_bytes)
+        match, score = self._best_match(embedding)
+        allowed = match is not None and score >= self.settings.threshold
+        user_identifier = None
+        if match and allowed:
+            user = None
+            if match.get("user_id") is not None:
+                user = next((u for u in self.cache.get("users", []) if u["id"] == match["user_id"]), None)
+            user_identifier = user["identifier"] if user else match.get("person_name")
+            expires_at = user.get("expires_at") if user else None
+            if expires_at:
+                try:
+                    from datetime import datetime as _dt
+                    if _dt.fromisoformat(str(expires_at)) < _dt.utcnow():
+                        allowed = False
+                except Exception:
+                    pass
+            if allowed and user:
+                allowed = self._is_within_schedule(match["user_id"])
+        if allowed:
+            self.gpio.trigger()
+        status = "success" if allowed else "denied"
+        event_payload = {
+            "user_identifier": user_identifier,
+            "status": status,
+            "message": f"score={score:.3f}",
+            "device_id": self.settings.device_id,
+            "confidence": score,
+        }
+        try:
+            sync_client.send_event(self.settings, event_payload)
+        except Exception as exc:
+            logger.warning("Failed to push event: %s", exc)
+        return {"allowed": allowed, "score": score, "user_identifier": user_identifier}
+
+    def run_once(self, rtsp_client: RTSPClient) -> Dict[str, Any]:
+        frame = rtsp_client.read_frame()
+        if not frame:
+            logger.warning("No frame received")
+            return {"allowed": False, "score": 0.0}
+        _, frame_bytes = frame
+        return self.process_frame(frame_bytes)
