@@ -15,14 +15,21 @@ class RTSPClient:
         self.frame_counter = 0
 
     def connect(self) -> None:
+        # RTSP options для стабильного подключения и уменьшения ошибок декодирования
+        import os
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
+
         self.capture = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
         if self.capture:
-            # Настройки для ускорения RTSP
+            # Настройки для ускорения RTSP и стабильности
             self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Минимальный буфер
-            self.capture.set(cv2.CAP_PROP_FPS, 15)  # Ограничить FPS
+            self.capture.set(cv2.CAP_PROP_FPS, 10)  # Меньше FPS = стабильнее
+            # Уменьшить разрешение с камеры для снижения битрейта
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not self.capture or not self.capture.isOpened():
             raise RuntimeError("Unable to open RTSP stream")
-        logger.info("RTSP connected: %s (resize to %dpx)", self.url, self.resize_width)
+        logger.info("RTSP connected via TCP: %s (resize to %dpx)", self.url, self.resize_width)
 
     def read_frame(self) -> Optional[Tuple[bool, bytes]]:
         if not self.capture:
@@ -32,13 +39,22 @@ class RTSPClient:
         # Пропускаем буферизованные кадры для уменьшения задержки
         self.capture.grab()  # Очистка буфера
 
-        ok, frame = self.capture.read()
-        if not ok:
-            logger.warning("RTSP frame read failed, reconnecting")
+        # Пытаемся прочитать кадр, пропускаем поврежденные
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            ok, frame = self.capture.read()
+            if ok and frame is not None and frame.size > 0:
+                break
+            # Если кадр поврежден, пропускаем и пытаемся следующий
+            if attempt < max_attempts - 1:
+                self.capture.grab()
+        else:
+            # Все попытки неудачны - переподключаемся
+            logger.warning("RTSP frame read failed after %d attempts, reconnecting", max_attempts)
             self.connect()
             ok, frame = self.capture.read()
-        if not ok:
-            return None
+            if not ok:
+                return None
 
         # Resize для ускорения обработки и лучшего качества
         if self.resize_width and frame.shape[1] != self.resize_width:
