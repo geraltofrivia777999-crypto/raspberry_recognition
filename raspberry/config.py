@@ -16,7 +16,7 @@ class PiSettings(BaseSettings):
     usb_device_index: int = 0
     facenet_model_path: str = "facenet.onnx"
     insightface_model_name: str = "buffalo_l"
-    insightface_det_size: tuple = (640, 640)  # Увеличен для лучшей точности (особенно для RTSP)
+    insightface_det_size: tuple = (320, 320)  # Меньший размер для экономии памяти на RPi
     threshold: float = 0.6
     gpio_pin: int = 17
     gpio_pulse_ms: int = 800
@@ -35,4 +35,4 @@ class PiSettings(BaseSettings):
 
     # Performance optimization
     rtsp_frame_skip: int = 5  # Обрабатывать каждый N-й кадр для RTSP (1 = все кадры, 5 = каждый 5-й)
-    rtsp_threshold: float = 0.5  # Порог для RTSP (с улучшенной обработкой можем снизить)
+    rtsp_threshold: float = 0.55  # Порог для RTSP (немного ниже из-за сжатия, но не слишком)
