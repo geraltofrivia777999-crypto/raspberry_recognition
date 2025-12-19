@@ -32,3 +32,7 @@ class PiSettings(BaseSettings):
     exit_button_enabled: bool = True  # Включить кнопку выхода
     exit_button_pin: int = 27  # GPIO пин для кнопки выхода
     exit_button_debounce_ms: int = 200  # Задержка anti-bounce (мс)
+
+    # Performance optimization
+    rtsp_frame_skip: int = 5  # Обрабатывать каждый N-й кадр для RTSP (1 = все кадры, 5 = каждый 5-й)
+    rtsp_threshold: float = 0.5  # Порог для RTSP (может быть ниже из-за сжатия)

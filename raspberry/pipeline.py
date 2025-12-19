@@ -206,8 +206,14 @@ class AccessController:
         return False
 
     def process_frame(self, frame_bytes: bytes) -> Dict[str, Any]:
+        import time as _time
+        start_time = _time.time()
+
         embedding = self.recognizer.embed(frame_bytes)
         match, score = self._best_match(embedding)
+
+        processing_time = _time.time() - start_time
+
         allowed = match is not None and score >= self.settings.threshold
         user_identifier = None
 
@@ -246,7 +252,11 @@ class AccessController:
                 # Cooldown expired, trigger GPIO
                 self.gpio.trigger()
                 self.last_trigger_time = current_time
-                logger.info("✓ Access granted for %s (score=%.3f)", user_identifier, score)
+                logger.info("✓ Access granted for %s (score=%.3f, processed in %.2fs)", user_identifier, score, processing_time)
+        else:
+            # Логируем только если есть совпадение но скор низкий
+            if match:
+                logger.debug("Access denied: score %.3f < threshold %.3f (processed in %.2fs)", score, self.settings.threshold, processing_time)
 
         status = "success" if allowed else "denied"
         event_payload = {

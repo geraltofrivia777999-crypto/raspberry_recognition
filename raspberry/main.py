@@ -36,6 +36,8 @@ def main():
         logger.warning("Initial sync failed, using cache if present: %s", exc)
 
     last_sync = time.time()
+    frame_counter = 0  # Счетчик кадров для пропуска
+
     try:
         while True:
             now = time.time()
@@ -45,11 +47,24 @@ def main():
                     last_sync = now
                 except Exception as exc:
                     logger.warning("Sync failed: %s", exc)
-            try:
-                controller.run_once(rtsp)
-            except Exception as exc:
-                logger.error("Processing failed: %s", exc)
-            time.sleep(0.1)
+
+            # Пропускаем кадры для ускорения RTSP обработки
+            frame_counter += 1
+            if frame_counter >= settings.rtsp_frame_skip:
+                frame_counter = 0
+                try:
+                    # Используем RTSP threshold вместо обычного
+                    original_threshold = controller.settings.threshold
+                    controller.settings.threshold = settings.rtsp_threshold
+
+                    controller.run_once(rtsp)
+
+                    # Восстанавливаем оригинальный threshold
+                    controller.settings.threshold = original_threshold
+                except Exception as exc:
+                    logger.error("Processing failed: %s", exc)
+
+            time.sleep(0.05)  # Уменьшили с 0.1 до 0.05 для более частого чтения RTSP
     except KeyboardInterrupt:
         logger.info("Stopping controller")
     finally:
