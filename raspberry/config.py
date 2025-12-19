@@ -35,4 +35,4 @@ class PiSettings(BaseSettings):
 
     # Performance optimization
     rtsp_frame_skip: int = 5  # Обрабатывать каждый N-й кадр для RTSP (1 = все кадры, 5 = каждый 5-й)
-    rtsp_threshold: float = 0.5  # Порог для RTSP (может быть ниже из-за сжатия)
+    rtsp_threshold: float = 0.55  # Порог для RTSP (немного ниже из-за сжатия, но не слишком)

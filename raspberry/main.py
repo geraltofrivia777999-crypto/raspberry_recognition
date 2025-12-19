@@ -57,10 +57,17 @@ def main():
                     original_threshold = controller.settings.threshold
                     controller.settings.threshold = settings.rtsp_threshold
 
-                    controller.run_once(rtsp)
+                    result = controller.run_once(rtsp)
 
                     # Восстанавливаем оригинальный threshold
                     controller.settings.threshold = original_threshold
+
+                    # If access was granted and door was triggered, clear buffer to prevent processing old frames
+                    if result.get("triggered"):
+                        logger.debug("Door triggered - clearing RTSP buffer to prevent repeated openings")
+                        rtsp.clear_buffer(num_frames=15)  # Clear more frames for RTSP due to latency
+                        frame_counter = 0  # Reset frame counter
+                        time.sleep(1.0)  # Give extra time for person to move away
                 except Exception as exc:
                     logger.error("Processing failed: %s", exc)
 
