@@ -55,6 +55,21 @@ class RTSPClient:
             return None
         return True, buf.tobytes()
 
+    def clear_buffer(self, num_frames: int = 10) -> None:
+        """
+        Clear buffered frames by reading and discarding them.
+        This helps prevent processing old frames after recognition.
+
+        Args:
+            num_frames: Number of frames to discard (default: 10)
+        """
+        if not self.capture:
+            return
+
+        logger.debug("Clearing RTSP buffer (%d frames)", num_frames)
+        for _ in range(num_frames):
+            self.capture.grab()  # Read and discard frame
+
     def release(self) -> None:
         if self.capture:
             self.capture.release()

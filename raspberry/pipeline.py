@@ -25,6 +25,11 @@ class AccessController:
         self.last_trigger_time = 0.0
         self.cooldown_period = settings.access_cooldown_sec  # Период между срабатываниями
 
+        # Consecutive trigger tracking to prevent repeated openings
+        self.consecutive_triggers = 0
+        self.max_consecutive_triggers = 3  # Maximum consecutive triggers allowed
+        self.last_no_face_time = 0.0  # Track when we last saw no face
+
         # Register InsightFace recognizer
         try:
             from insightface_recognizer import InsightFaceRecognizer
@@ -209,6 +214,30 @@ class AccessController:
         import time as _time
         start_time = _time.time()
 
+        # First check if there's a face in the frame (fast check)
+        # This prevents processing empty frames and false positives
+        has_face = False
+        if hasattr(self.recognizer, 'has_face'):
+            has_face = self.recognizer.has_face(frame_bytes)
+        else:
+            # Fallback for recognizers without has_face method
+            has_face = True
+
+        # Reset consecutive triggers if no face detected for more than 2 seconds
+        current_time = time.time()
+        if not has_face:
+            self.last_no_face_time = current_time
+            if current_time - self.last_trigger_time > 2.0:
+                if self.consecutive_triggers > 0:
+                    logger.debug("No face detected - resetting consecutive triggers counter")
+                    self.consecutive_triggers = 0
+            return {"allowed": False, "score": 0.0, "user_identifier": None, "triggered": False, "no_face": True}
+
+        # If we've had too many consecutive triggers, wait for reset
+        if self.consecutive_triggers >= self.max_consecutive_triggers:
+            logger.debug("Max consecutive triggers reached (%d), ignoring frame", self.max_consecutive_triggers)
+            return {"allowed": False, "score": 0.0, "user_identifier": None, "triggered": False, "max_triggers": True}
+
         embedding = self.recognizer.embed(frame_bytes)
         match, score = self._best_match(embedding)
 
@@ -237,7 +266,6 @@ class AccessController:
                     allowed = self._is_within_schedule(match["user_id"])
 
         # Apply cooldown: only trigger if enough time has passed since last trigger
-        current_time = time.time()
         if allowed:
             if current_time - self.last_trigger_time < self.cooldown_period:
                 # Still in cooldown period
@@ -252,7 +280,11 @@ class AccessController:
                 # Cooldown expired, trigger GPIO
                 self.gpio.trigger()
                 self.last_trigger_time = current_time
-                logger.info("✓ Access granted for %s (score=%.3f, processed in %.2fs)", user_identifier, score, processing_time)
+                self.consecutive_triggers += 1
+                logger.info(
+                    "✓ Access granted for %s (score=%.3f, processed in %.2fs, consecutive=%d)",
+                    user_identifier, score, processing_time, self.consecutive_triggers
+                )
         else:
             # Логируем только если есть совпадение но скор низкий
             if match:

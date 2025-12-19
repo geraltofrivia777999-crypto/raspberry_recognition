@@ -50,6 +50,32 @@ class InsightFaceRecognizer(BaseRecognizer):
             det_size,
         )
 
+    def has_face(self, image_bytes: bytes) -> bool:
+        """
+        Check if image contains a face without extracting embedding.
+
+        Args:
+            image_bytes: Image data as bytes
+
+        Returns:
+            True if at least one face is detected, False otherwise
+        """
+        try:
+            # Convert bytes to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img is None:
+                return False
+
+            # Detect faces
+            faces = self.app.get(img)
+
+            return len(faces) > 0
+        except Exception as exc:
+            logger.debug("Face detection failed: %s", exc)
+            return False
+
     def embed(self, image_bytes: bytes) -> np.ndarray:
         """
         Extract face embedding from image bytes.
